@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.staticfiles import StaticFiles
 from database import get_database, startup_db_client, shutdown_db_client
 from models import AIAssistant, AIAssistantCreate, AIAssistantUpdate
 from typing import List, Optional
@@ -10,6 +11,11 @@ from contextlib import asynccontextmanager
 import secrets
 import os
 from datetime import datetime
+import logging
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,8 +30,12 @@ app = FastAPI(title="AI Assistants Management System", version="2.0.0", lifespan
 
 # Настройки безопасности
 security = HTTPBasic()
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD",)
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+
+# Подключаем статические файлы
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,9 +65,10 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
-@app.get("/")
-async def root():
-    return {"message": "AI Assistants Management System API", "version": "2.0.0"}
+@app.get("/api/health")
+async def health_check():
+    """Проверка здоровья приложения"""
+    return {"status": "healthy", "version": "2.0.0"}
 
 # API для фронтенда
 @app.get("/api/projects", response_model=List[AIAssistant])
@@ -214,21 +225,44 @@ async def get_stats(collection=Depends(get_projects_collection)):
 @app.get("/", response_class=HTMLResponse)
 async def home_page():
     """Главная страница"""
-    with open("templates/index.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    try:
+        with open("templates/index.html", "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content=content)
+    except FileNotFoundError:
+        logger.error("index.html not found")
+        return HTMLResponse(
+            content="<h1>AI Assistants</h1><p>Welcome to AI Assistants Platform</p>",
+            status_code=200
+        )
 
 @app.get("/projects", response_class=HTMLResponse)
 async def projects_page():
-    """Главная страница с проектами"""
-    with open("templates/projects.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    """Страница с проектами"""
+    try:
+        with open("templates/projects.html", "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content=content)
+    except FileNotFoundError:
+        logger.error("projects.html not found")
+        return HTMLResponse(
+            content="<h1>Projects</h1><p>Projects page not found</p>",
+            status_code=200
+        )
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
     """Страница администрирования"""
-    with open("templates/admin.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
-
+    try:
+        with open("templates/admin.html", "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content=content)
+    except FileNotFoundError:
+        logger.error("admin.html not found")
+        return HTMLResponse(
+            content="<h1>Admin</h1><p>Admin page not found</p>",
+            status_code=200
+        )
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=6565, reload=True)
