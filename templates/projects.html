@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistants</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --primary: #0f172a;
+            --secondary: #1e293b;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #ffffff;
+            --surface: #f8fafc;
+            --border: #e2e8f0;
+            --text: #334155;
+            --text-light: #64748b;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1);
+            --shadow-hover: 0 10px 40px rgba(0,0,0,0.1);
+            --radius: 4px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header */
+        .header {
+            padding: 48px 0;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: -0.5px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 32px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Filters */
+        .filters {
+            padding: 32px 0;
+            display: flex;
+            gap: 24px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .filter-label {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-right: 8px;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            border-radius: var(--radius);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .filter-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 24px;
+            padding: 32px 0 64px;
+        }
+
+        /* Card */
+        .card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-2px);
+        }
+
+        .card-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .card-meta {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .status {
+            font-size: 12px;
+            font-weight: 500;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--text);
+        }
+
+        .status.active { background: #10b98120; color: #059669; }
+        .status.development { background: #f59e0b20; color: #d97706; }
+        .status.testing { background: #3b82f620; color: #2563eb; }
+        .status.completed { background: #e2e8f0; color: #64748b; }
+
+        .category {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .rating {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .card-body {
+            padding: 24px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .description {
+            font-size: 14px;
+            color: var(--text);
+            margin-bottom: 16px;
+            line-height: 1.6;
+        }
+
+        .features {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 24px;
+        }
+
+        .feature {
+            font-size: 12px;
+            padding: 4px 8px;
+            background: var(--surface);
+            color: var(--text);
+            border-radius: var(--radius);
+        }
+
+        .links {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px;
+            background: var(--primary);
+            color: white;
+            text-decoration: none;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+
+        .link:hover {
+            background: var(--secondary);
+        }
+
+        .link.whatsapp { background: #25d366; }
+        .link.whatsapp:hover { background: #128c7e; }
+        .link.telegram { background: #0088cc; }
+        .link.telegram:hover { background: #006699; }
+        .link.demo { background: var(--accent); }
+        .link.demo:hover { background: var(--accent-hover); }
+
+        /* Loading & Empty states */
+        .state-container {
+            padding: 120px 24px;
+            text-align: center;
+        }
+
+        .state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .state-text {
+            font-size: 16px;
+            color: var(--text-light);
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 16px;
+            }
+            
+            .header {
+                padding: 24px 0;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 24px;
+            }
+            
+            .stats {
+                width: 100%;
+                justify-content: space-around;
+            }
+            
+            .filters {
+                padding: 24px 0;
+                gap: 16px;
+            }
+            
+            .filter-group {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+        }
+
+        /* Animations */
+        .fade-enter-active, .fade-leave-active {
+            transition: opacity 0.3s ease;
+        }
+        
+        .fade-enter-from, .fade-leave-to {
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="container">
+                <div class="header-content">
+                    <h1 class="logo">AI Assistants</h1>
+                    <div class="stats" v-if="stats">
+                        <div class="stat-item">
+                            <span class="stat-value">{{ stats.total_projects }}</span>
+                            <span class="stat-label">Projects</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">{{ stats.active_projects }}</span>
+                            <span class="stat-label">Active</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">{{ stats.average_rating }}</span>
+                            <span class="stat-label">Avg Rating</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Filters -->
+        <section class="filters">
+            <div class="container" style="display: flex; gap: 24px; flex-wrap: wrap;">
+                <div class="filter-group">
+                    <span class="filter-label">Category:</span>
+                    <button 
+                        class="filter-btn" 
+                        :class="{ active: selectedCategory === 'All' }"
+                        @click="filterByCategory('All')"
+                    >
+                        All
+                    </button>
+                    <button 
+                        v-for="category in categories" 
+                        :key="category"
+                        class="filter-btn"
+                        :class="{ active: selectedCategory === category }"
+                        @click="filterByCategory(category)"
+                    >
+                        {{ category }}
+                    </button>
+                </div>
+                
+                <div class="filter-group">
+                    <span class="filter-label">Status:</span>
+                    <button 
+                        class="filter-btn" 
+                        :class="{ active: selectedStatus === 'All' }"
+                        @click="filterByStatus('All')"
+                    >
+                        All
+                    </button>
+                    <button 
+                        v-for="status in statuses" 
+                        :key="status"
+                        class="filter-btn"
+                        :class="{ active: selectedStatus === status }"
+                        @click="filterByStatus(status)"
+                    >
+                        {{ getStatusName(status) }}
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Content -->
+        <main class="container">
+            <!-- Loading -->
+            <div v-if="loading" class="state-container">
+                <div class="loading-spinner"></div>
+                <p class="state-text">Loading projects...</p>
+            </div>
+
+            <!-- Error -->
+            <div v-else-if="error" class="state-container">
+                <div class="state-icon">⚠️</div>
+                <p class="state-text">{{ error }}</p>
+            </div>
+
+            <!-- Empty -->
+            <div v-else-if="filteredProjects.length === 0" class="state-container">
+                <div class="state-icon">📭</div>
+                <p class="state-text">No projects found</p>
+            </div>
+
+            <!-- Grid -->
+            <transition-group name="fade" tag="div" class="grid" v-else>
+                <article 
+                    v-for="project in filteredProjects"  
+                    :key="project.id" 
+                    class="card"
+                >
+                    <header class="card-header">
+                        <h3 class="card-title">{{ project.name }}</h3>
+                        <div class="card-meta">
+                            <span :class="['status', getStatusClass(project.status)]">
+                                {{ getStatusName(project.status) }}
+                            </span>
+                            <span v-if="project.category" class="category">
+                                {{ project.category }}
+                            </span>
+                            <div v-if="project.rating" class="rating">
+                                <span>{{ project.rating }}</span>
+                                <span>★</span>
+                            </div>
+                        </div>
+                    </header>
+                    
+                    <div class="card-body">
+                        <p class="description">{{ project.project_description }}</p>
+                        
+                        <div v-if="project.features && project.features.length" class="features">
+                            <span 
+                                v-for="feature in project.features.slice(0, 3)" 
+                                :key="feature" 
+                                class="feature"
+                            >
+                                {{ feature }}
+                            </span>
+                            <span v-if="project.features.length > 3" class="feature">
+                                +{{ project.features.length - 3 }}
+                            </span>
+                        </div>
+                        
+                        <div class="links">
+                            <button
+                                v-for="link in project.links" 
+                                :key="link.url"
+                                :class="['link', link.type]"
+                                @click="openLink(link.url)"
+                            >
+                                {{ getLinkIcon(link.type) }} {{ link.name }}
+                            </button>
+                        </div>
+                    </div>
+                </article>
+            </transition-group>
+        </main>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    projects: [],
+                    categories: [],
+                    statuses: [],
+                    stats: null,
+                    selectedCategory: 'All',
+                    selectedStatus: 'All',
+                    loading: true,
+                    error: null
+                }
+            },
+            computed: {
+                filteredProjects() {
+                    let filtered = this.projects;
+                    
+                    if (this.selectedCategory !== 'All') {
+                        filtered = filtered.filter(project => 
+                            project.category === this.selectedCategory
+                        );
+                    }
+                    
+                    if (this.selectedStatus !== 'All') {
+                        filtered = filtered.filter(project => 
+                            project.status === this.selectedStatus
+                        );
+                    }
+                    
+                    return filtered;
+                }
+            },
+            methods: {
+                async fetchProjects() {
+                    try {
+                        this.loading = true;
+                        this.error = null;
+                        
+                        const response = await fetch('/api/projects');
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        
+                        this.projects = await response.json();
+                        
+                    } catch (err) {
+                        console.error('Error loading projects:', err);
+                        this.error = 'Failed to load projects';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                async fetchCategories() {
+                    try {
+                        const response = await fetch('/api/categories');
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.categories = data.categories || [];
+                        }
+                    } catch (err) {
+                        console.error('Error loading categories:', err);
+                    }
+                },
+                
+                async fetchStatuses() {
+                    try {
+                        const response = await fetch('/api/statuses');
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.statuses = data.statuses || [];
+                        }
+                    } catch (err) {
+                        console.error('Error loading statuses:', err);
+                    }
+                },
+                
+                async fetchStats() {
+                    try {
+                        const response = await fetch('/api/stats');
+                        if (response.ok) {
+                            this.stats = await response.json();
+                        }
+                    } catch (err) {
+                        console.error('Error loading stats:', err);
+                    }
+                },
+                
+                filterByCategory(category) {
+                    this.selectedCategory = category;
+                },
+                
+                filterByStatus(status) {
+                    this.selectedStatus = status;
+                },
+                
+                openLink(url) {
+                    if (!url) return;
+                    
+                    if (window.Telegram?.WebApp) {
+                        window.Telegram.WebApp.openLink(url);
+                    } else {
+                        window.open(url, '_blank');
+                    }
+                },
+
+                getStatusClass(status) {
+                    const map = {
+                        'Активен': 'active',
+                        'В разработке': 'development',
+                        'В тестировании': 'testing',
+                        'Завершен': 'completed',
+                        'Приостановлен': 'completed',
+                        'Отменен': 'completed'
+                    };
+                    return map[status] || 'development';
+                },
+                
+                getStatusName(status) {
+                    const map = {
+                        'Активен': 'Active',
+                        'В разработке': 'In Development',
+                        'В тестировании': 'Testing',
+                        'Завершен': 'Completed',
+                        'Приостановлен': 'Paused',
+                        'Отменен': 'Cancelled'
+                    };
+                    return map[status] || status;
+                },
+                
+                getLinkIcon(type) {
+                    const icons = {
+                        'whatsapp': '💬',
+                        'telegram': '✈️',
+                        'demo': '▶️',
+                        'website': '🌐',
+                        'api': '⚡',
+                        'documentation': '📚',
+                        'github': '💻'
+                    };
+                    return icons[type] || '🔗';
+                },
+                
+                initTelegramWebApp() {
+                    if (window.Telegram?.WebApp) {
+                        const webApp = window.Telegram.WebApp;
+                        webApp.ready();
+                    }
+                }
+            },
+            
+            async mounted() {
+                this.initTelegramWebApp();
+                await Promise.all([
+                    this.fetchProjects(),
+                    this.fetchCategories(),
+                    this.fetchStatuses(),
+                    this.fetchStats()
+                ]);
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

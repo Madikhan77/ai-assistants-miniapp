@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - AI Assistants</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        :root {
+            --primary: #0f172a;
+            --secondary: #1e293b;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #ffffff;
+            --surface: #f8fafc;
+            --border: #e2e8f0;
+            --text: #334155;
+            --text-light: #64748b;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1);
+            --shadow-hover: 0 10px 40px rgba(0,0,0,0.1);
+            --radius: 4px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+            background: var(--surface);
+            color: var(--text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Auth Modal */
+        .auth-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+
+        .auth-container {
+            background: var(--bg);
+            padding: 48px;
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 400px;
+            box-shadow: var(--shadow-hover);
+        }
+
+        .auth-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .form-input {
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 14px;
+            transition: all 0.2s;
+            background: var(--bg);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .auth-error {
+            color: var(--danger);
+            font-size: 14px;
+            text-align: center;
+            padding: 12px;
+            background: #fef2f2;
+            border-radius: var(--radius);
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            padding: 24px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary);
+        }
+
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+
+        .btn-icon {
+            padding: 8px;
+            width: 36px;
+            height: 36px;
+            justify-content: center;
+        }
+
+        /* Table */
+        .table-container {
+            background: var(--bg);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            margin: 32px 0;
+        }
+
+        .table-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            padding: 16px 24px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: var(--surface);
+        }
+
+        .project-name {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .project-admin {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .status-badge {
+            font-size: 12px;
+            font-weight: 500;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--text);
+        }
+
+        .status-badge.active { background: #10b98120; color: #059669; }
+        .status-badge.development { background: #f59e0b20; color: #d97706; }
+        .status-badge.testing { background: #3b82f620; color: #2563eb; }
+        .status-badge.completed { background: #e2e8f0; color: #64748b; }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 24px;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            background: var(--bg);
+            border-radius: var(--radius);
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-hover);
+        }
+
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: var(--text-light);
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: var(--text);
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .modal-footer {
+            padding: 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        /* Form Elements */
+        .form-section {
+            margin-bottom: 24px;
+        }
+
+        .form-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 14px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        select.form-control {
+            cursor: pointer;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        /* Dynamic Lists */
+        .list-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+
+        .list-item {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: flex-start;
+        }
+
+        .list-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .list-empty {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-light);
+            font-size: 14px;
+        }
+
+        /* Messages */
+        .message {
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .message-success {
+            background: #ecfdf5;
+            color: #059669;
+            border: 1px solid #a7f3d0;
+        }
+
+        .message-error {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px;
+            color: var(--text-light);
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 16px;
+            }
+            
+            .auth-container {
+                padding: 32px 24px;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 16px;
+            }
+            
+            .table-wrapper {
+                margin: 0 -16px;
+            }
+            
+            th, td {
+                padding: 12px 16px;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+            
+            .modal {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Auth Modal -->
+        <div v-if="!isAuthenticated" class="auth-modal">
+            <div class="auth-container">
+                <h2 class="auth-title">Admin Access</h2>
+                <form @submit.prevent="login" class="auth-form">
+                    <div class="form-group">
+                        <label class="form-label">Username</label>
+                        <input 
+                            type="text" 
+                            class="form-input" 
+                            v-model="authForm.username"
+                            required
+                            autocomplete="username"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input 
+                            type="password" 
+                            class="form-input" 
+                            v-model="authForm.password"
+                            required
+                            autocomplete="current-password"
+                        >
+                    </div>
+                    <div v-if="authError" class="auth-error">
+                        {{ authError }}
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        Login
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Main App -->
+        <div v-else>
+            <!-- Header -->
+            <header class="header">
+                <div class="container">
+                    <div class="header-content">
+                        <h1 class="logo">
+                            <span>🔧</span>
+                            Admin Panel
+                        </h1>
+                        <div class="header-actions">
+                            <button class="btn btn-primary" @click="openCreateModal">
+                                + New Project
+                            </button>
+                            <a href="/projects" class="btn btn-secondary">
+                                View Projects
+                            </a>
+                            <button class="btn btn-icon btn-secondary" @click="refreshProjects" title="Refresh">
+                                🔄
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Content -->
+            <main class="container">
+                <!-- Success Message -->
+                <div v-if="successMessage" class="message message-success">
+                    ✅ {{ successMessage }}
+                </div>
+
+                <!-- Projects Table -->
+                <div class="table-container">
+                    <div class="table-header">
+                        <h2 class="table-title">Projects ({{ projects.length }})</h2>
+                    </div>
+                    
+                    <div v-if="loading" class="loading">
+                        <div class="spinner"></div>
+                        Loading projects...
+                    </div>
+                    
+                    <div v-else-if="error" class="message message-error">
+                        Error: {{ error }}
+                    </div>
+                    
+                    <div v-else class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Category</th>
+                                    <th>Status</th>
+                                    <th>Rating</th>
+                                    <th>Links</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="project in projects" :key="project.id">
+                                    <td>
+                                        <div class="project-name">{{ project.name }}</div>
+                                        <div class="project-admin">{{ project.admin_panel_name }}</div>
+                                    </td>
+                                    <td>{{ project.category || '—' }}</td>
+                                    <td>
+                                        <span :class="['status-badge', getStatusClass(project.status)]">
+                                            {{ project.status }}
+                                        </span>
+                                    </td>
+                                    <td>{{ project.rating || '—' }}</td>
+                                    <td>{{ project.links?.length || 0 }}</td>
+                                    <td>
+                                        <div class="actions">
+                                            <button 
+                                                class="btn btn-sm btn-secondary" 
+                                                @click="editProject(project)"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button 
+                                                class="btn btn-sm btn-danger" 
+                                                @click="deleteProject(project.id)"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Create/Edit Modal -->
+            <div v-if="showModal" class="modal" @click.self="closeModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 class="modal-title">
+                            {{ editingProject ? 'Edit Project' : 'Create Project' }}
+                        </h3>
+                        <button class="modal-close" @click="closeModal">×</button>
+                    </div>
+
+                    <form @submit.prevent="saveProject">
+                        <div class="modal-body">
+                            <!-- Basic Info -->
+                            <div class="form-section">
+                                <div class="form-group">
+                                    <label class="form-label">Project Name *</label>
+                                    <input 
+                                        type="text" 
+                                        class="form-control" 
+                                        v-model="formData.name"
+                                        required
+                                    >
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Admin Panel Name</label>
+                                    <input 
+                                        type="text" 
+                                        class="form-control" 
+                                        v-model="formData.admin_panel_name"
+                                    >
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Description *</label>
+                                    <textarea 
+                                        class="form-control" 
+                                        v-model="formData.project_description"
+                                        required
+                                    ></textarea>
+                                </div>
+                            </div>
+
+                            <!-- Meta Info -->
+                            <div class="form-section">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                    <div class="form-group">
+                                        <label class="form-label">Category</label>
+                                        <select class="form-control" v-model="formData.category">
+                                            <option value="">Select category</option>
+                                            <option v-for="category in availableCategories" :key="category" :value="category">
+                                                {{ category }}
+                                            </option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Status *</label>
+                                        <select class="form-control" v-model="formData.status" required>
+                                            <option v-for="status in availableStatuses" :key="status" :value="status">
+                                                {{ status }}
+                                            </option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Rating (0-5)</label>
+                                        <input 
+                                            type="number" 
+                                            class="form-control" 
+                                            v-model.number="formData.rating"
+                                            min="0"
+                                            max="5"
+                                            step="0.1"
+                                        >
+                                    </div>
+
+                                    <div class="form-group" style="align-self: center;">
+                                        <div class="checkbox-group">
+                                            <input 
+                                                type="checkbox" 
+                                                id="completed"
+                                                v-model="formData.is_project_completed"
+                                            >
+                                            <label for="completed" class="form-label" style="margin: 0;">
+                                                Project completed
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Links -->
+                            <div class="form-section">
+                                <div class="form-section-title">
+                                    <span>Project Links *</span>
+                                    <button type="button" class="btn btn-sm btn-primary" @click="addLink">
+                                        + Add Link
+                                    </button>
+                                </div>
+                                
+                                <div class="list-container">
+                                    <div v-if="formData.links.length === 0" class="list-empty">
+                                        Add at least one link
+                                    </div>
+                                    
+                                    <div v-for="(link, index) in formData.links" :key="index" class="list-item">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Link name"
+                                            class="form-control"
+                                            v-model="link.name"
+                                            style="flex: 1;"
+                                        >
+                                        <input 
+                                            type="url" 
+                                            placeholder="URL"
+                                            class="form-control"
+                                            v-model="link.url"
+                                            style="flex: 2;"
+                                        >
+                                        <select class="form-control" v-model="link.type" style="flex: 1;">
+                                            <option value="">Type</option>
+                                            <option value="whatsapp">WhatsApp</option>
+                                            <option value="telegram">Telegram</option>
+                                            <option value="demo">Demo</option>
+                                            <option value="website">Website</option>
+                                            <option value="api">API</option>
+                                            <option value="documentation">Docs</option>
+                                            <option value="github">GitHub</option>
+                                        </select>
+                                        <button 
+                                            type="button" 
+                                            class="btn btn-sm btn-danger"
+                                            @click="removeLink(index)"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Features -->
+                            <div class="form-section">
+                                <div class="form-section-title">
+                                    <span>Key Features</span>
+                                    <button type="button" class="btn btn-sm btn-primary" @click="addFeature">
+                                        + Add Feature
+                                    </button>
+                                </div>
+                                
+                                <div class="list-container">
+                                    <div v-if="formData.features.length === 0" class="list-empty">
+                                        No features added
+                                    </div>
+                                    
+                                    <div v-for="(feature, index) in formData.features" :key="index" class="list-item">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Feature description"
+                                            class="form-control"
+                                            v-model="formData.features[index]"
+                                            style="flex: 1;"
+                                        >
+                                        <button 
+                                            type="button" 
+                                            class="btn btn-sm btn-danger"
+                                            @click="removeFeature(index)"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @click="closeModal">
+                                Cancel
+                            </button>
+                            <button type="submit" class="btn btn-success">
+                                {{ editingProject ? 'Save Changes' : 'Create Project' }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    // Auth
+                    isAuthenticated: false,
+                    authForm: {
+                        username: '',
+                        password: ''
+                    },
+                    authError: '',
+                    authCredentials: null,
+                    
+                    // Projects
+                    projects: [],
+                    loading: false,
+                    error: null,
+                    successMessage: '',
+                    
+                    // Modal
+                    showModal: false,
+                    editingProject: null,
+                    formData: {
+                        name: '',
+                        admin_panel_name: '',
+                        project_description: '',
+                        links: [],
+                        is_project_completed: false,
+                        status: '',
+                        features: [],
+                        category: '',
+                        rating: null
+                    },
+                    
+                    // Options
+                    availableStatuses: [
+                        'В разработке',
+                        'В тестировании',
+                        'Активен',
+                        'Завершен',
+                        'Приостановлен',
+                        'Отменен'
+                    ],
+                    availableCategories: [
+                        'Бизнес-Автоматизация',
+                        'Продажи',
+                        'Поддержка клиентов',
+                        'E-commerce',
+                        'Образование',
+                        'Здравоохранение',
+                        'Финансы',
+                        'Недвижимость',
+                        'Другое'
+                    ]
+                }
+            },
+            methods: {
+                // Auth methods
+                async login() {
+                    this.authError = '';
+                    const credentials = btoa(`${this.authForm.username}:${this.authForm.password}`);
+                    this.authCredentials = credentials;
+                    
+                    try {
+                        const response = await fetch('/api/projects', {
+                            headers: {
+                                'Authorization': `Basic ${credentials}`
+                            }
+                        });
+                        
+                        if (response.status === 401) {
+                            this.authError = 'Invalid username or password';
+                            this.authCredentials = null;
+                            return;
+                        }
+                        
+                        if (response.ok) {
+                            this.isAuthenticated = true;
+                            await this.fetchProjects();
+                        }
+                    } catch (err) {
+                        this.authError = 'Connection error';
+                        this.authCredentials = null;
+                    }
+                },
+                
+                getAuthHeaders() {
+                    return {
+                        'Authorization': `Basic ${this.authCredentials}`,
+                        'Content-Type': 'application/json'
+                    };
+                },
+                
+                // Project methods
+                async fetchProjects() {
+                    try {
+                        this.loading = true;
+                        this.error = null;
+                        
+                        const response = await fetch('/api/projects');
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        
+                        this.projects = await response.json();
+                        
+                    } catch (err) {
+                        console.error('Error loading projects:', err);
+                        this.error = err.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                openCreateModal() {
+                    this.editingProject = null;
+                    this.resetForm();
+                    this.showModal = true;
+                },
+
+                editProject(project) {
+                    this.editingProject = project;
+                    this.formData = {
+                        name: project.name,
+                        admin_panel_name: project.admin_panel_name || '',
+                        project_description: project.project_description,
+                        links: project.links ? [...project.links] : [],
+                        is_project_completed: project.is_project_completed,
+                        status: project.status,
+                        features: project.features ? [...project.features] : [],
+                        category: project.category || '',
+                        rating: project.rating
+                    };
+                    this.showModal = true;
+                },
+
+                closeModal() {
+                    this.showModal = false;
+                    this.editingProject = null;
+                    this.resetForm();
+                },
+
+                resetForm() {
+                    this.formData = {
+                        name: '',
+                        admin_panel_name: '',
+                        project_description: '',
+                        links: [],
+                        is_project_completed: false,
+                        status: this.availableStatuses[0],
+                        features: [],
+                        category: '',
+                        rating: null
+                    };
+                },
+
+                addLink() {
+                    this.formData.links.push({
+                        name: '',
+                        url: '',
+                        type: ''
+                    });
+                },
+
+                removeLink(index) {
+                    this.formData.links.splice(index, 1);
+                },
+
+                addFeature() {
+                    this.formData.features.push('');
+                },
+
+                removeFeature(index) {
+                    this.formData.features.splice(index, 1);
+                },
+
+                async saveProject() {
+                    try {
+                        // Validation
+                        if (!this.formData.name.trim()) {
+                            alert('Project name is required');
+                            return;
+                        }
+                        
+                        if (!this.formData.project_description.trim()) {
+                            alert('Project description is required');
+                            return;
+                        }
+                        
+                        if (!this.formData.links.length) {
+                            alert('Add at least one link');
+                            return;
+                        }
+                        
+                        // Check link fields
+                        for (let link of this.formData.links) {
+                            if (!link.name.trim() || !link.url.trim()) {
+                                alert('Fill in all link fields');
+                                return;
+                            }
+                        }
+                        
+                        // Clean empty features
+                        this.formData.features = this.formData.features.filter(f => f.trim());
+                        
+                        const url = this.editingProject 
+                            ? `/api/projects/${this.editingProject.id}`
+                            : '/api/projects';
+                        
+                        const method = this.editingProject ? 'PUT' : 'POST';
+                        
+                        const response = await fetch(url, {
+                            method: method,
+                            headers: this.getAuthHeaders(),
+                            body: JSON.stringify(this.formData)
+                        });
+                        
+                        if (response.status === 401) {
+                            this.isAuthenticated = false;
+                            return;
+                        }
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Save error');
+                        }
+                        
+                        this.showSuccessMessage(this.editingProject 
+                            ? 'Project updated successfully!' 
+                            : 'Project created successfully!');
+                        
+                        this.closeModal();
+                        await this.fetchProjects();
+                        
+                    } catch (err) {
+                        console.error('Error saving project:', err);
+                        alert('Error: ' + err.message);
+                    }
+                },
+
+                async deleteProject(projectId) {
+                    if (!confirm('Are you sure you want to delete this project?')) {
+                        return;
+                    }
+                    
+                    try {
+                        const response = await fetch(`/api/projects/${projectId}`, {
+                            method: 'DELETE',
+                            headers: this.getAuthHeaders()
+                        });
+                        
+                        if (response.status === 401) {
+                            this.isAuthenticated = false;
+                            return;
+                        }
+                        
+                        if (!response.ok) {
+                            throw new Error('Delete error');
+                        }
+                        
+                        this.showSuccessMessage('Project deleted successfully!');
+                        await this.fetchProjects();
+                        
+                    } catch (err) {
+                        console.error('Error deleting project:', err);
+                        alert('Error: ' + err.message);
+                    }
+                },
+
+                async refreshProjects() {
+                    await this.fetchProjects();
+                    this.showSuccessMessage('Data refreshed!');
+                },
+                
+                showSuccessMessage(message) {
+                    this.successMessage = message;
+                    setTimeout(() => {
+                        this.successMessage = '';
+                    }, 3000);
+                },
+                
+                getStatusClass(status) {
+                    const map = {
+                        'Активен': 'active',
+                        'В разработке': 'development',
+                        'В тестировании': 'testing',
+                        'Завершен': 'completed',
+                        'Приостановлен': 'completed',
+                        'Отменен': 'completed'
+                    };
+                    return map[status] || 'development';
+                }
+            },
+            
+            mounted() {
+                // Check if already authenticated
+                if (this.authCredentials) {
+                    this.isAuthenticated = true;
+                    this.fetchProjects();
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
