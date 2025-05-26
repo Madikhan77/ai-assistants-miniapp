@@ -298,6 +298,35 @@
             gap: 8px;
         }
 
+        .links-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .copy-btn {
+            padding: 4px 8px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            color: var(--text-light);
+        }
+
+        .copy-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .copy-btn.copied {
+            background: var(--success);
+            color: white;
+            border-color: var(--success);
+        }
+
         /* Modal */
         .modal {
             position: fixed;
@@ -414,6 +443,16 @@
             width: 16px;
             height: 16px;
             cursor: pointer;
+        }
+
+        .category-input-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .category-input-wrapper .form-control {
+            flex: 1;
         }
 
         /* Dynamic Lists */
@@ -612,7 +651,6 @@
                                     <th>Project</th>
                                     <th>Category</th>
                                     <th>Status</th>
-                                    <th>Rating</th>
                                     <th>Links</th>
                                     <th>Actions</th>
                                 </tr>
@@ -629,8 +667,20 @@
                                             {{ project.status }}
                                         </span>
                                     </td>
-                                    <td>{{ project.rating || '—' }}</td>
-                                    <td>{{ project.links?.length || 0 }}</td>
+                                    <td>
+                                        <div class="links-cell">
+                                            <span>{{ project.links?.length || 0 }}</span>
+                                            <button 
+                                                v-if="project.links?.length > 0"
+                                                class="copy-btn"
+                                                :class="{ copied: copiedProjectId === project.id }"
+                                                @click="copyLinks(project)"
+                                                :title="copiedProjectId === project.id ? 'Copied!' : 'Copy all links'"
+                                            >
+                                                {{ copiedProjectId === project.id ? '✓' : '📋' }}
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td>
                                         <div class="actions">
                                             <button 
@@ -702,12 +752,23 @@
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                                     <div class="form-group">
                                         <label class="form-label">Category</label>
-                                        <select class="form-control" v-model="formData.category">
-                                            <option value="">Select category</option>
-                                            <option v-for="category in availableCategories" :key="category" :value="category">
-                                                {{ category }}
-                                            </option>
-                                        </select>
+                                        <div class="category-input-wrapper">
+                                            <select class="form-control" v-model="formData.category">
+                                                <option value="">Select category</option>
+                                                <option v-for="category in availableCategories" :key="category" :value="category">
+                                                    {{ category }}
+                                                </option>
+                                                <option value="__custom__">+ Add custom</option>
+                                            </select>
+                                            <input 
+                                                v-if="formData.category === '__custom__'"
+                                                type="text" 
+                                                class="form-control" 
+                                                v-model="customCategory"
+                                                placeholder="Enter custom category"
+                                                @blur="handleCustomCategory"
+                                            >
+                                        </div>
                                     </div>
 
                                     <div class="form-group">
@@ -719,19 +780,7 @@
                                         </select>
                                     </div>
 
-                                    <div class="form-group">
-                                        <label class="form-label">Rating (0-5)</label>
-                                        <input 
-                                            type="number" 
-                                            class="form-control" 
-                                            v-model.number="formData.rating"
-                                            min="0"
-                                            max="5"
-                                            step="0.1"
-                                        >
-                                    </div>
-
-                                    <div class="form-group" style="align-self: center;">
+                                    <div class="form-group" style="align-self: center; grid-column: span 2;">
                                         <div class="checkbox-group">
                                             <input 
                                                 type="checkbox" 
@@ -864,6 +913,7 @@
                     loading: false,
                     error: null,
                     successMessage: '',
+                    copiedProjectId: null,
                     
                     // Modal
                     showModal: false,
@@ -879,6 +929,7 @@
                         category: '',
                         rating: null
                     },
+                    customCategory: '',
                     
                     // Options
                     availableStatuses: [
@@ -889,17 +940,7 @@
                         'Приостановлен',
                         'Отменен'
                     ],
-                    availableCategories: [
-                        'Бизнес-Автоматизация',
-                        'Продажи',
-                        'Поддержка клиентов',
-                        'E-commerce',
-                        'Образование',
-                        'Здравоохранение',
-                        'Финансы',
-                        'Недвижимость',
-                        'Другое'
-                    ]
+                    availableCategories: []
                 }
             },
             methods: {
@@ -925,6 +966,7 @@
                         if (response.ok) {
                             this.isAuthenticated = true;
                             await this.fetchProjects();
+                            await this.fetchCategories();
                         }
                     } catch (err) {
                         this.authError = 'Connection error';
@@ -937,6 +979,28 @@
                         'Authorization': `Basic ${this.authCredentials}`,
                         'Content-Type': 'application/json'
                     };
+                },
+                
+                // Category methods
+                async fetchCategories() {
+                    try {
+                        const response = await fetch('/api/categories');
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.availableCategories = data.categories || [];
+                        }
+                    } catch (err) {
+                        console.error('Error loading categories:', err);
+                    }
+                },
+                
+                handleCustomCategory() {
+                    if (this.customCategory.trim()) {
+                        this.formData.category = this.customCategory.trim();
+                        this.customCategory = '';
+                    } else {
+                        this.formData.category = '';
+                    }
                 },
                 
                 // Project methods
@@ -977,7 +1041,7 @@
                         status: project.status,
                         features: project.features ? [...project.features] : [],
                         category: project.category || '',
-                        rating: project.rating
+                        rating: null // Убираем рейтинг
                     };
                     this.showModal = true;
                 },
@@ -1000,6 +1064,7 @@
                         category: '',
                         rating: null
                     };
+                    this.customCategory = '';
                 },
 
                 addLink() {
@@ -1020,6 +1085,23 @@
 
                 removeFeature(index) {
                     this.formData.features.splice(index, 1);
+                },
+
+                copyLinks(project) {
+                    if (!project.links || project.links.length === 0) return;
+                    
+                    const linksText = project.links
+                        .map(link => `${link.name}: ${link.url}`)
+                        .join('\n');
+                    
+                    navigator.clipboard.writeText(linksText).then(() => {
+                        this.copiedProjectId = project.id;
+                        setTimeout(() => {
+                            this.copiedProjectId = null;
+                        }, 2000);
+                    }).catch(err => {
+                        console.error('Failed to copy:', err);
+                    });
                 },
 
                 async saveProject() {
@@ -1079,6 +1161,7 @@
                         
                         this.closeModal();
                         await this.fetchProjects();
+                        await this.fetchCategories();
                         
                     } catch (err) {
                         console.error('Error saving project:', err);
@@ -1117,6 +1200,7 @@
 
                 async refreshProjects() {
                     await this.fetchProjects();
+                    await this.fetchCategories();
                     this.showSuccessMessage('Data refreshed!');
                 },
                 
@@ -1145,6 +1229,7 @@
                 if (this.authCredentials) {
                     this.isAuthenticated = true;
                     this.fetchProjects();
+                    this.fetchCategories();
                 }
             }
         }).mount('#app');

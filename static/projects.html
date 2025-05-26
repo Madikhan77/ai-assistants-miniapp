@@ -198,14 +198,6 @@
             color: var(--text-light);
         }
 
-        .rating {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-size: 12px;
-            color: var(--text-light);
-        }
-
         .card-body {
             padding: 24px;
             flex: 1;
@@ -363,10 +355,6 @@
                             <span class="stat-value">{{ stats.active_projects }}</span>
                             <span class="stat-label">Active</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-value">{{ stats.average_rating }}</span>
-                            <span class="stat-label">Avg Rating</span>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -453,10 +441,6 @@
                             <span v-if="project.category" class="category">
                                 {{ project.category }}
                             </span>
-                            <div v-if="project.rating" class="rating">
-                                <span>{{ project.rating }}</span>
-                                <span>★</span>
-                            </div>
                         </div>
                     </header>
                     

@@ -1,42 +1,97 @@
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.staticfiles import StaticFiles
-from database import get_database, startup_db_client, shutdown_db_client
-from models import AIAssistant, AIAssistantCreate, AIAssistantUpdate
-from typing import List, Optional
-import uvicorn
-from contextlib import asynccontextmanager
-import secrets
 import os
-from datetime import datetime
 import logging
+from datetime import datetime
+from typing import List, Optional
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+import secrets
+
+from models import (
+    AIAssistantCreate, 
+    AIAssistantUpdate, 
+    AIAssistantResponse, 
+    ProjectStats,
+    CategoriesResponse,
+    StatusesResponse,
+    ProjectStatus
+)
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# Загрузка переменных окружения
+load_dotenv()
+
+# Глобальные переменные для MongoDB
+db_client: Optional[AsyncIOMotorClient] = None
+db = None
+
+# Конфигурация
+MONGODB_URL = os.getenv("MONGODB_URL")
+DATABASE_NAME = os.getenv("DATABASE_NAME")
+COLLECTION_NAME = "ai_assistants"
+HOST = os.getenv("HOST")
+PORT = int(os.getenv("PORT"))
+
+# Аутентификация
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+security = HTTPBasic()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Protocol for application startup and shutdown"""
-    # Запуск подключения к БД
-    await startup_db_client()
+    """Управление жизненным циклом приложения"""
+    # Startup
+    global db_client, db
+    try:
+        logger.info(f"Connecting to MongoDB at {MONGODB_URL}")
+        db_client = AsyncIOMotorClient(MONGODB_URL)
+        db = db_client[DATABASE_NAME]
+        
+        # Проверка подключения
+        await db_client.admin.command('ping')
+        logger.info("✅ Successfully connected to MongoDB")
+        
+        # Создание индексов
+        collection = db[COLLECTION_NAME]
+        await collection.create_index("name")
+        await collection.create_index("status")
+        await collection.create_index("category")
+        await collection.create_index("created_at")
+        logger.info("✅ Database indexes created")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+        raise
+    
     yield
-    # Завершение работы с БД
-    await shutdown_db_client()
+    
+    # Shutdown
+    if db_client:
+        db_client.close()
+        logger.info("✅ MongoDB connection closed")
 
-app = FastAPI(title="AI Assistants Management System", version="2.0.0", lifespan=lifespan)
+# Создание приложения
+app = FastAPI(
+    title="AI Assistants API",
+    description="API for managing AI assistant projects",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
-# Настройки безопасности
-security = HTTPBasic()
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
-
-# Подключаем статические файлы
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,224 +100,287 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def get_projects_collection():
-    db = await get_database()
-    return db.projects
-
-def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
+# Функция проверки аутентификации
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     """Проверка учетных данных администратора"""
     is_correct_username = secrets.compare_digest(
-        credentials.username.encode("utf8"), ADMIN_USERNAME.encode("utf8")
+        credentials.username.encode("utf8"), 
+        ADMIN_USERNAME.encode("utf8")
     )
     is_correct_password = secrets.compare_digest(
-        credentials.password.encode("utf8"), ADMIN_PASSWORD.encode("utf8")
+        credentials.password.encode("utf8"), 
+        ADMIN_PASSWORD.encode("utf8")
     )
+    
     if not (is_correct_username and is_correct_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверное имя пользователя или пароль",
+            detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Basic"},
         )
+    
     return credentials.username
 
-@app.get("/api/health")
-async def health_check():
-    """Проверка здоровья приложения"""
-    return {"status": "healthy", "version": "2.0.0"}
-
-# API для фронтенда
-@app.get("/api/projects", response_model=List[AIAssistant])
+# API Endpoints
+@app.get("/api/projects", response_model=List[AIAssistantResponse])
 async def get_projects(
-    category: Optional[str] = None,
-    status: Optional[str] = None,
-    collection=Depends(get_projects_collection)
+    status_filter: Optional[str] = None,
+    category_filter: Optional[str] = None,
+    completed: Optional[bool] = None
 ):
-    """Получить все проекты с возможностью фильтрации"""
-    filter_query = {}
-    
-    if category:
-        filter_query["category"] = category
-    if status:
-        filter_query["status"] = status
-    
-    projects = await collection.find(filter_query).to_list(length=None)
-    
-    for project in projects:
-        project["id"] = str(project["_id"])
-        del project["_id"]
-    
-    return projects
-
-@app.get("/api/projects/{project_id}", response_model=AIAssistant)
-async def get_project(project_id: str, collection=Depends(get_projects_collection)):
-    """Получить проект по ID"""
-    from bson import ObjectId
-    
+    """Получить список всех проектов с опциональной фильтрацией"""
     try:
+        collection = db[COLLECTION_NAME]
+        
+        # Построение фильтра
+        filter_query = {}
+        if status_filter:
+            filter_query["status"] = status_filter
+        if category_filter:
+            filter_query["category"] = category_filter
+        if completed is not None:
+            filter_query["is_project_completed"] = completed
+        
+        # Получение проектов
+        cursor = collection.find(filter_query).sort("created_at", -1)
+        projects = []
+        
+        async for project in cursor:
+            project["id"] = str(project["_id"])
+            projects.append(AIAssistantResponse(**project))
+        
+        logger.info(f"Retrieved {len(projects)} projects")
+        return projects
+        
+    except Exception as e:
+        logger.error(f"Error retrieving projects: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/projects/{project_id}", response_model=AIAssistantResponse)
+async def get_project(project_id: str):
+    """Получить конкретный проект по ID"""
+    try:
+        from bson import ObjectId
+        
+        collection = db[COLLECTION_NAME]
         project = await collection.find_one({"_id": ObjectId(project_id)})
+        
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
         project["id"] = str(project["_id"])
-        del project["_id"]
-        return project
+        return AIAssistantResponse(**project)
+        
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid project ID")
+        logger.error(f"Error retrieving project: {e}")
+        if "ObjectId" in str(e):
+            raise HTTPException(status_code=400, detail="Invalid project ID format")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/projects", response_model=AIAssistant)
+@app.post("/api/projects", response_model=AIAssistantResponse, status_code=201)
 async def create_project(
-    project: AIAssistantCreate, 
-    collection=Depends(get_projects_collection),
-    admin=Depends(verify_admin)
+    project: AIAssistantCreate,
+    username: str = Depends(verify_credentials)
 ):
     """Создать новый проект (требует аутентификации)"""
-    project_dict = project.model_dump()
-    
-    if not project_dict.get("links") or len(project_dict["links"]) == 0:
-        raise HTTPException(status_code=400, detail="At least one link is required")
-    
-    # Добавляем временные метки
-    project_dict["created_at"] = datetime.utcnow()
-    project_dict["updated_at"] = datetime.utcnow()
-    
-    result = await collection.insert_one(project_dict)
-    
-    created_project = await collection.find_one({"_id": result.inserted_id})
-    created_project["id"] = str(created_project["_id"])
-    del created_project["_id"]
-    
-    return created_project
+    try:
+        collection = db[COLLECTION_NAME]
+        
+        # Подготовка данных
+        project_data = project.model_dump()
+        project_data["created_at"] = datetime.utcnow()
+        project_data["updated_at"] = datetime.utcnow()
+        
+        # Убираем рейтинг при создании
+        project_data.pop("rating", None)
+        
+        # Создание проекта
+        result = await collection.insert_one(project_data)
+        
+        # Получение созданного проекта
+        created_project = await collection.find_one({"_id": result.inserted_id})
+        created_project["id"] = str(created_project["_id"])
+        
+        logger.info(f"Project created by {username}: {project.name}")
+        return AIAssistantResponse(**created_project)
+        
+    except Exception as e:
+        logger.error(f"Error creating project: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/api/projects/{project_id}", response_model=AIAssistant)
+@app.put("/api/projects/{project_id}", response_model=AIAssistantResponse)
 async def update_project(
     project_id: str,
-    project_update: AIAssistantUpdate,
-    collection=Depends(get_projects_collection),
-    admin=Depends(verify_admin)
+    project: AIAssistantUpdate,
+    username: str = Depends(verify_credentials)
 ):
-    """Обновить проект (требует аутентификации)"""
-    from bson import ObjectId
-    
+    """Обновить существующий проект (требует аутентификации)"""
     try:
-        update_dict = {k: v for k, v in project_update.model_dump().items() if v is not None}
+        from bson import ObjectId
         
-        if not update_dict:
-            raise HTTPException(status_code=400, detail="No fields to update")
+        collection = db[COLLECTION_NAME]
         
-        # Обновляем временную метку
-        update_dict["updated_at"] = datetime.utcnow()
-        
-        result = await collection.update_one(
-            {"_id": ObjectId(project_id)},
-            {"$set": update_dict}
-        )
-        
-        if result.matched_count == 0:
+        # Проверка существования проекта
+        existing = await collection.find_one({"_id": ObjectId(project_id)})
+        if not existing:
             raise HTTPException(status_code=404, detail="Project not found")
         
+        # Подготовка данных для обновления
+        update_data = {k: v for k, v in project.model_dump().items() if v is not None}
+        update_data["updated_at"] = datetime.utcnow()
+        
+        # Убираем рейтинг при обновлении
+        update_data.pop("rating", None)
+        
+        # Обновление проекта
+        await collection.update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": update_data}
+        )
+        
+        # Получение обновленного проекта
         updated_project = await collection.find_one({"_id": ObjectId(project_id)})
         updated_project["id"] = str(updated_project["_id"])
-        del updated_project["_id"]
         
-        return updated_project
+        logger.info(f"Project updated by {username}: {project_id}")
+        return AIAssistantResponse(**updated_project)
+        
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid project ID or update data")
+        logger.error(f"Error updating project: {e}")
+        if "ObjectId" in str(e):
+            raise HTTPException(status_code=400, detail="Invalid project ID format")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/projects/{project_id}")
 async def delete_project(
-    project_id: str, 
-    collection=Depends(get_projects_collection),
-    admin=Depends(verify_admin)
+    project_id: str,
+    username: str = Depends(verify_credentials)
 ):
     """Удалить проект (требует аутентификации)"""
-    from bson import ObjectId
-    
     try:
+        from bson import ObjectId
+        
+        collection = db[COLLECTION_NAME]
+        
+        # Удаление проекта
         result = await collection.delete_one({"_id": ObjectId(project_id)})
         
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Project not found")
         
-        return {"message": "Project deleted successfully"}
+        logger.info(f"Project deleted by {username}: {project_id}")
+        return {"message": "Project successfully deleted"}
+        
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid project ID")
+        logger.error(f"Error deleting project: {e}")
+        if "ObjectId" in str(e):
+            raise HTTPException(status_code=400, detail="Invalid project ID format")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/categories")
-async def get_categories(collection=Depends(get_projects_collection)):
-    """Получить все уникальные категории"""
-    categories = await collection.distinct("category")
-    return {"categories": [cat for cat in categories if cat]}
-
-@app.get("/api/statuses")
-async def get_statuses(collection=Depends(get_projects_collection)):
-    """Получить все уникальные статусы"""
-    statuses = await collection.distinct("status")
-    return {"statuses": [status for status in statuses if status]}
-
-@app.get("/api/stats")
-async def get_stats(collection=Depends(get_projects_collection)):
+@app.get("/api/stats", response_model=ProjectStats)
+async def get_stats():
     """Получить статистику проектов"""
-    total = await collection.count_documents({})
-    active = await collection.count_documents({"status": "Активен"})
-    completed = await collection.count_documents({"is_project_completed": True})
-    
-    # Средний рейтинг
-    pipeline = [
-        {"$match": {"rating": {"$exists": True, "$ne": None}}},
-        {"$group": {"_id": None, "avg_rating": {"$avg": "$rating"}}}
-    ]
-    rating_result = await collection.aggregate(pipeline).to_list(length=1)
-    avg_rating = rating_result[0]["avg_rating"] if rating_result else 0
-    
-    return {
-        "total_projects": total,
-        "active_projects": active,
-        "completed_projects": completed,
-        "average_rating": round(avg_rating, 2)
-    }
-
-# Роуты для HTML страниц
-@app.get("/", response_class=HTMLResponse)
-async def home_page():
-    """Главная страница"""
     try:
-        with open("templates/index.html", "r", encoding="utf-8") as f:
-            content = f.read()
-        return HTMLResponse(content=content)
-    except FileNotFoundError:
-        logger.error("index.html not found")
-        return HTMLResponse(
-            content="<h1>AI Assistants</h1><p>Welcome to AI Assistants Platform</p>",
-            status_code=200
+        collection = db[COLLECTION_NAME]
+        
+        # Подсчет статистики
+        total_projects = await collection.count_documents({})
+        active_projects = await collection.count_documents({"status": "Активен"})
+        completed_projects = await collection.count_documents({"is_project_completed": True})
+        
+        # Средний рейтинг (игнорируем, так как убрали рейтинги)
+        average_rating = None
+        
+        return ProjectStats(
+            total_projects=total_projects,
+            active_projects=active_projects,
+            completed_projects=completed_projects,
+            average_rating=average_rating
         )
+        
+    except Exception as e:
+        logger.error(f"Error getting stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/projects", response_class=HTMLResponse)
+@app.get("/api/categories", response_model=CategoriesResponse)
+async def get_categories():
+    """Получить список всех уникальных категорий"""
+    try:
+        collection = db[COLLECTION_NAME]
+        
+        # Получение уникальных категорий
+        categories = await collection.distinct("category")
+        
+        # Фильтрация пустых значений
+        categories = [cat for cat in categories if cat]
+        
+        # Сортировка
+        categories.sort()
+        
+        return CategoriesResponse(categories=categories)
+        
+    except Exception as e:
+        logger.error(f"Error getting categories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/statuses", response_model=StatusesResponse)
+async def get_statuses():
+    """Получить список всех доступных статусов"""
+    try:
+        # Возвращаем все статусы из enum
+        statuses = [status.value for status in ProjectStatus]
+        return StatusesResponse(statuses=statuses)
+        
+    except Exception as e:
+        logger.error(f"Error getting statuses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Статические файлы
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# HTML страницы
+@app.get("/")
+async def root():
+    """Перенаправление на страницу проектов"""
+    return FileResponse("static/projects.html")
+
+@app.get("/projects")
 async def projects_page():
     """Страница с проектами"""
-    try:
-        with open("templates/projects.html", "r", encoding="utf-8") as f:
-            content = f.read()
-        return HTMLResponse(content=content)
-    except FileNotFoundError:
-        logger.error("projects.html not found")
-        return HTMLResponse(
-            content="<h1>Projects</h1><p>Projects page not found</p>",
-            status_code=200
-        )
+    return FileResponse("static/projects.html")
 
-@app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin")
 async def admin_page():
-    """Страница администрирования"""
+    """Админ панель"""
+    return FileResponse("static/admin.html")
+
+# Health check
+@app.get("/health")
+async def health_check():
+    """Проверка состояния сервиса"""
     try:
-        with open("templates/admin.html", "r", encoding="utf-8") as f:
-            content = f.read()
-        return HTMLResponse(content=content)
-    except FileNotFoundError:
-        logger.error("admin.html not found")
-        return HTMLResponse(
-            content="<h1>Admin</h1><p>Admin page not found</p>",
-            status_code=200
+        # Проверка подключения к БД
+        await db_client.admin.command('ping')
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.utcnow()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unhealthy", "database": "disconnected", "error": str(e)}
         )
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=6565, reload=True)
+    import uvicorn
+    
+    logger.info(f"Starting server on {HOST}:{PORT}")
+    uvicorn.run(
+        "main:app",
+        host=HOST,
+        port=PORT,
+        reload=True,
+        log_level="info"
+    )
